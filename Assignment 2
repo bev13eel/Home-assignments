@@ -1,0 +1,220 @@
+
+###########################################################
+#                                                         #
+#                 Loading packages                        #
+#                                                         #
+###########################################################
+
+library(psych) # for describe
+library(car) # for residualPlots, vif, pairs.panels, ncvTest
+library(ggplot2) # for ggplot
+library(cAIC4) # for cAIC
+library(r2glmm) # for r2beta
+library(influence.ME) # for influence
+library(lattice) # for qqmath
+library(rgl)
+
+
+###########################################################
+#                     Load data                           #
+###########################################################
+#Data
+data_sample_1 = read.csv("https://raw.githubusercontent.com/kekecsz/PSYP13_Data_analysis_class/master/home_sample_1.csv")
+View(data_sample_1)
+
+data.1 <- data_sample_1[data_sample_1$mindfulness >= 1,] #excluding mindfulness with values less than 1
+data.2 <- data.1[!data.1$sex == 3,] #subsetting the sex that was valued 3
+
+#To treat sex as a factor
+# sex <- as.factor(data.2$sex)
+# class(sex)
+# print(sex)
+
+droplevels(x = data.2$sex, exclude = 3) #removing the level with value 3
+print(data.2$sex)
+levels(sex$data.2) <- c("male", "female")
+
+#Now it is the same data as i used in the first assignment
+
+###########################################################
+#                         Model 2                         #
+###########################################################
+
+mod_2 <- lm(pain~sex + age + STAI_trait + pain_cat + cortisol_saliva + cortisol_serum + mindfulness, data = data.2)
+mod_2
+
+#Checking assumptions
+
+# checking for influential outliers
+#Scatterplot. First thing to look for: influetial outliers. Dont worry if it fits the regression line
+plot(pain ~ weight, data = data.2)
+
+#Cooks distance
+plot(mod_2, which = 4) # The Navarro book says that cooks distance above 1 is an outlier. 
+# but the best is visual 
+plot(mod_2, which = 5) # a plot where you can see the levargae. High error (residuals)
+
+#No influential outliers
+
+# normality assumption,
+# assumes normal distribution of the errors
+# QQ plot
+plot(mod_2, which = 2)
+
+# skew and kurtosis, if skew is higher than 1 -> deviation from normal distribution, the data is skewed
+describe(residuals(mod_2))
+# histogram
+hist(residuals(mod_2), breaks = 20)
+
+# linearity assumption
+# predicted values against actual values
+pred <- predict( object = mod_2 )
+plot( x = pred, y = data.2$pain, 
+      xlab = "Fitted Values", ylab = "Observed Values") #if our model is correct the data should fall on a straight line
+# predicted values against residuals
+plot(mod_2, which = 1) #the data should fall on a flat straight line
+# residual plot for each predictor from the car package, returning the result of linearity tests
+#Get a plot for each predictor, the data should fall on a straight flat line, returns a significance test
+residualPlots(mod_2)
+
+# homoscedasticty assumption (homogeneity of variance)
+#The residuals should have the same spread
+plot(mod_2, which = 3)
+ncvTest(mod_2) #significance test. This indicates a problem. You can restrict your model, build a model on a smaller data set. But in a scientific paper you need to explain.
+#we had a suggestion of homoscedasity in our data, in further resasrch you could use a smaller model
+#could also transform the data, log transformation
+
+vif(mod_2) #high value for sqft:living and sqft:above. These values are very similar to each other. Multicolinarity above three or four 
+pairs.panels(data.2[,c("pain_cat", "sex", "age", "cortisol_saliva", "cortisol_serum","mindfulness", "weight")], col = "red", lm = T)
+#High correlation between the variables with high vif value. -> exclue one of the predictors
+#Exclude one of predictors based on your theoretical standpoint, what the literature says
+
+
+###########################################################
+#                  Collegues model                        #
+###########################################################
+#age, sex, weight, STAI, pain catastrophizing, mindfulness, serum cortisol 
+
+mod_C <- lm(pain~sex + age + STAI_trait + pain_cat + cortisol_serum + mindfulness + weight, data = data.2)
+mod_C
+
+#Checking assumptions
+
+# checking for influential outliers
+#Scatterplot. First thing to look for: influetial outliers. Dont worry if it fits the regression line
+plot(pain ~ weight, data = data.2)
+
+#Cooks distance
+plot(mod_C, which = 4) # The Navarro book says that cooks distance above 1 is an outlier. 
+# but the best is visual 
+plot(mod_C, which = 5) # a plot where you can see the levargae. High error (residuals)
+
+#No influential outliers
+
+# normality assumption,
+# assumes normal distribution of the errors
+# QQ plot
+plot(mod_C, which = 2)
+
+# skew and kurtosis, if skew is higher than 1 -> deviation from normal distribution, the data is skewed
+describe(residuals(mod_C))
+# histogram
+hist(residuals(mod_C), breaks = 20)
+
+# linearity assumption
+# predicted values against actual values
+pred.C <- predict( object = mod_C )
+plot( x = pred, y = data.2$pain, 
+      xlab = "Fitted Values", ylab = "Observed Values") #if our model is correct the data should fall on a straight line
+# predicted values against residuals
+plot(mod_C, which = 1) #the data should fall on a flat straight line
+# residual plot for each predictor from the car package, returning the result of linearity tests
+#Get a plot for each predictor, the data should fall on a straight flat line, returns a significance test
+residualPlots(mod_C)
+
+# homoscedasticty assumption (homogeneity of variance)
+#The residuals should have the same spread
+plot(mod_C, which = 3)
+ncvTest(mod_C) #significance test. This indicates a problem. You can restrict your model, build a model on a smaller data set. But in a scientific paper you need to explain.
+#we had a suggestion of homoscedasity in our data, in further resasrch you could use a smaller model
+#could also transform the data, log transformation
+
+vif(mod_C) #high value for sqft:living and sqft:above. These values are very similar to each other. Multicolinarity above three or four 
+pairs.panels(data.2[,c("pain_cat", "sex", "age", "cortisol_serum","mindfulness", "weight")], col = "red", lm = T)
+#High correlation between the variables with high vif value. -> exclue one of the predictors
+#Exclude one of predictors based on your theoretical standpoint, what the literature says
+#In this case remove sqft:living
+
+###########################################################
+#                Backward regression                      #
+###########################################################
+
+summary(mod_C)
+AIC(mod_C)
+
+# backward regression to identify the variables with the highest unique predictive value
+mod_C_all_back = step(mod_C, direction = "backward")
+summary(mod_C_all_back)
+
+AIC(mod_C_all_back)
+lm.beta(mod_C_all_back)
+confint(mod_C_all_back)
+
+
+summary(mod_2)
+AIC(mod_2)
+
+
+
+###########################################################
+#             Comparing the two models                    #
+###########################################################
+#Comparing the model subitted to backward regression and the backward model
+anova(mod_C, mod_C_all_back)
+anova(mod_C_all_back, mod_C)
+AIC(mod_C)
+AIC(mod_C_all_back)
+
+#models can be compared with anova, which is sensitive to the number of predictors
+
+anova(mod_2, mod_C_all_back)
+anova(mod_C_all_back, mod_2)
+
+# Comparing adjusted R squared in the summary of the two models
+# adjusted R squared is also sensitive to the number of predictors,
+# but it is still not perfect
+
+summary(mod_2)
+summary(mod_C_all_back)
+
+# Comparing AIC
+# it will usually choose the smaller model
+
+AIC(mod_2)
+AIC(mod_C_all_back)
+
+
+###########################################################
+#             Testing on new data set                     #
+###########################################################
+data_sample_2 = read.csv("https://raw.githubusercontent.com/kekecsz/PSYP13_Data_analysis_class/master/home_sample_2.csv")
+View(data_sample_2)
+
+# test the performance of backward regression model on the test set
+# NOTE that we did not re-fit the models on the test set, we use the models fitted
+# on the training set for the prediction
+
+pred_test <- predict(mod_2, data_sample_2)
+pred_test_back <- predict(mod_C_all_back, data_sample_2)
+
+# now we calculate the sum of squared residuals 
+
+RSS_test = sum((data_sample_2$pain - pred_test)^2)
+RSS_test_back = sum((data_sample_2$pain - pred_test_back)^2)
+
+RSS_test
+
+RSS_test_back
+
+# error is larger in the backward regression model
+#As expected
