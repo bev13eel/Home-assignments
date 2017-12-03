@@ -1,0 +1,189 @@
+graphics.off()
+rm(list=ls(all=TRUE))
+
+################################################
+#                Assignment 1                  #
+################################################
+#Assesing the influsence of trait and state on psychological measures on pain. 
+
+#STAI_trait: anxiety
+#pain_cat: pain catastrophizing
+#mindfulness: dispositional mindfulness
+#cortisol_serum: cortisol levels blood
+#cortisol_saliva: cortisol levels saliva
+
+#Data
+data_sample_1 = read.csv("https://raw.githubusercontent.com/kekecsz/PSYP13_Data_analysis_class/master/home_sample_1.csv")
+View(data_sample_1)
+
+#Packages
+library(psych)
+library(car)
+library(lsr)
+library(dplyr)
+library(lm.beta)
+
+################################################
+#                Data cleaning                 #
+################################################
+
+describe(data_sample_1)
+# Sex has three variables- id15
+# mindfulness has 3 negative value
+
+# id <- c(data_sample_1$ID) ????????????? remove?????
+sex <- c(data_sample_1$sex)
+print(sex)
+which(sex<2) #id 15 has a strange value
+
+mindfulness <- c(data_sample_1$mindfulness)
+print(mindfulness)
+which(mindfulness<1) #id 24, 25, 66 has strange values 
+
+#remove id 15,24,25,66
+
+data.1 <- data_sample_1[data_sample_1$mindfulness >= 1,] #excluding mindfulness with values less than 1
+data.2 <- data.1[!data.1$sex == 3,] #subsetting the sex that was valued 3
+
+#To treat sex as a factor
+sex <- as.factor(data.2$sex)
+class(sex)
+print(sex)
+sex <- droplevels(x = data.2$sex, exclude = 3) #removing the level with value 3
+print(sex)
+
+
+
+windows() #looking for outliers by using boxplots
+
+Boxplot(data.2$pain, horizontal=TRUE) 
+Boxplot(data.2$age, horizontal=TRUE)
+Boxplot(data.2$STAI_trait, horizontal=TRUE)
+Boxplot(data.2$cortisol_serum, horizontal=TRUE)
+Boxplot(data.2$cortisol_saliva, horizontal=TRUE)
+Boxplot(data.2$mindfulness, horizontal=TRUE)
+Boxplot(data.2$weight, horizontal=TRUE) #There is a woman wheighing only 40kg, which could be considered extreme
+#I decide to keep the data the way it looks now, there are some values that could be considered extreme, 
+#but looking over the data i find them reasnoble. 
+
+
+#Now the data set is looking fine, go on with the assignment.
+#Model 1: age and sex as predictors of pain
+#Model 2: age, sex, STAI, pain catastrophizing, mindfulness, and cortisol measures as predictors of pain
+
+################################################
+#                   Model 1                    #
+################################################
+#Age and sex as predictors
+#model 1
+mod_1 <- lm(pain ~ age + sex, data = data.2)
+mod_1
+summary(mod_1)
+
+
+#Histograms 
+hist(data.2$age)
+hist(data.2$pain)
+
+#Scatterplots
+windows()
+plot(pain~age, data=data.2)
+plot(pain~sex, data=data.2)
+
+# fit the regression model, pain as the outcome, then the predictors
+
+mod_1
+
+# plotting the scatterplots for each predictor separately
+# with the simple regression regression lines
+
+regression.age <- lm(formula=pain~age, data=data.2)
+print(regression.age)
+plot(pain~age, data = data.2)
+abline(lm(pain ~ age, data = data.2))
+
+regression.sex <- lm(formula=pain~sex, data=data.2)
+plot(pain~sex, data=data.2)
+plot(pain ~ sex, data=data.2)
+
+print(regression.sex)
+abline(lm(pain ~ sex, data = data.2))
+
+# plot the regression plane (3D scatterplot with regression plane)
+require(rgl)
+require(car)
+scatter3d(formula= pain ~ age + sex, data = data.2)
+
+#Predicting pain with age and sex 
+mod_1
+predict(mod_1, data = data.2)
+
+summary(mod_1) #the first is information about the model. Residuals, should be somewhere centrered round 0.
+# Coefficients, tells you wheter the predictors has a unique added value to the prediction. eg. sqft_living is significant, added significant unique information about the price
+# the models performance, r squared, the variabitlity of the outcome is explanied by the model. report adjusted r squared in paper (corrects for the number of predictors.
+# last line of the summary: significally better predictor of price than the nullmodel. Report the models performance in your pape
+
+AIC(mod_1) #need to run this seperatly but add in the paper
+confint(mod_1)  #report a table with coeffeicient, lower bound, upper bound
+
+#Which predictor had the most uniquw information added to the model?
+lm.beta(mod_1)
+
+lm.beta(lm(pain ~ age + sex-1, data = data.2))
+
+#checking the model for influetial outliers
+plot(x = mod_1, which = 4) #observation 112, 70
+plot(x = mod_1, which = 5) #observation 70
+
+data.exl <- lm(formula = pain ~ age + sex-1,data = data.2, subset = -70)
+data.exl
+summary(data.exl) #the same as when i did not exclude outliers. Better to keep them 
+
+#checking normality of the residuals
+hist(x = residuals( mod_1 ), xlab = "Value of residual", main = "",breaks = 20 )
+shapiro.test(mod_1)
+
+################################################
+#                   Model 2                    #
+################################################
+
+mod_2 <- lm(pain~sex + age + STAI_trait + pain_cat + cortisol_saliva + cortisol_serum + mindfulness, data = data.2)
+mod_2
+predict(mod_2)
+summary(mod_2)
+confint(mod_2)
+lm.beta(mod_2)
+AIC(mod_2)
+
+#checking the model for influetial outliers
+plot(x = mod_2, which = 4) #observation 160
+plot(x = mod_2, which = 5)
+
+data.exl.2 <- lm(formula = pain~sex-1 + age + STAI_trait + pain_cat + cortisol_saliva + cortisol_serum + mindfulness,data = data.2, subset = -46)
+data.exl.2
+summary(data.exl.2)
+#different result, but the same predictors were significant, no need to exculde outliers
+
+
+################################################
+#           MODEL SELECTION                    #
+################################################
+#Comparing models
+#Hierarichal regression
+# Quantify the amount of information gained about the 
+# variability of the outcome by adding pedictors in block certain predictors
+
+summary(mod_1)
+summary(mod_2)
+
+# compare models with the anova function
+anova(mod_1, mod_2)
+#There is a significant difference between the two models
+
+# compare with AIC
+AIC(mod_1)
+AIC(mod_2)
+#mod_2 has a lower AIC -> a better model 
+
+error_plotter(mod_2)
+points(predict(mod_2) ~ pain, data = data.2, col = "red")
