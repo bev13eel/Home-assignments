@@ -1,0 +1,236 @@
+graphics.off()
+rm(list=ls(all=TRUE))
+
+###########################################################
+#                                                         #
+#                 Mixed effect models                     #
+#                                                         #
+###########################################################
+#Loading data
+
+data = read.csv("https://raw.githubusercontent.com/kekecsz/PSYP13_Data_analysis_class/master/home_sample_3.csv")
+View(data)
+
+###########################################################
+#                 Load some more packages                 #
+###########################################################
+
+
+library(lme4) # for lmer
+library(lmerTest) # to get singificance test in lmer
+library(reshape2)
+library(ggplot2) # for ggplot
+library(influence.ME) # for influence
+library(r2glmm) # for r2beta
+library(MuMIn)
+
+###########################################################
+#                 Custom functions                        #
+###########################################################
+
+# function to extract standardized beta coefficients from mer models, such as one produced by lmer
+
+stdCoef.merMod <- function(object) {
+  sdy <- sd(getME(object,"y"))
+  sdx <- apply(getME(object,"X"), 2, sd)
+  sc <- fixef(object)*sdx/sdy
+  se.fixef <- coef(summary(object))[,"Std. Error"]
+  se <- se.fixef*sdx/sdy
+  return(data.frame(stdcoef=sc, stdse=se))
+}
+
+
+###########################################################
+#                                                         #
+#        REPEATED MEASURES WITH MIXED EFFECTS             #
+#                                                         #
+###########################################################
+
+
+# asign ID and location as factors
+data$ID = factor(data$ID)
+data$sex = factor(data$sex) 
+
+# varriables
+names(data)
+
+# designate which are the repeated varibales
+repeated_variables = c("pain1",	"pain2", "pain3",	"pain4")
+
+
+###########################################################
+#                       Explore data                      #
+###########################################################
+
+# descriptives
+describe(data)
+table(data[,"sex"])
+
+# histograms
+hist(data$pain1)
+hist(data$pain2)
+hist(data$pain3)
+hist(data$pain4)
+hist(data$weight)
+hist(data$mindfulness)
+hist(data$cortisol_saliva)
+hist(data$cortisol_serum)
+hist(data$pain_cat)
+hist(data$STAI_trait)
+hist(data$age)
+
+# correlation of repeated variables
+cor(data[,repeated_variables])
+#To demonstrate that there is a high correlation within the same participants
+#This is evidence that data is clustered around the participants
+
+###########################################################
+#           Transform wide to long format                 #
+###########################################################
+
+# id.vars should be all non-repeated variables
+data_long = melt(data, measure.vars=repeated_variables, variable.name = "time", value.name = "pain_rating") 
+#first data = designate what is the repeated variable, tell what you 
+
+# order data frame by participant ID(not necessary, just makes the dataframe look more intuitive)
+data_long = data_long[order(data_long[,"ID"]),] #sorts the data based on the participant ID
+# change the time variable to a numerical vector
+data_long$time = as.numeric(data_long$time)
+
+# lets look at how the data looks like in long format
+data_long
+
+###########################################################
+#                        Analysis                         #
+###########################################################
+#Fit both random intercept and the random slope
+
+# fixed effects of age, sex, weight, STAI, pain catastrophizing, mindfulness, serum cortisol, time (day of pain report),
+#and a random intercept for participant ID (variable called 'ID' in the dataset). 
+mod_rep_int = lmer(pain_rating ~ time + age + sex + weight + STAI_trait + mindfulness + cortisol_serum + (1|ID), data = data_long)
+mod_rep_slope = lmer(pain_rating ~ time + age + sex + weight + STAI_trait + mindfulness + cortisol_serum + (time|ID), data = data_long) 
+#allows for the time to have different effcts for each patient. 
+summary(mod_rep_slope)
+
+
+### model comparison to see whether to use random slope or random intercept models
+## plot the regression line (prediction)
+# save the predictions of both models to variables
+data_long$pred_int = predict(mod_rep_int)
+data_long$pred_slope = predict(mod_rep_slope)
+
+# random intercept model
+ggplot(data_long, aes(y = pain_rating, x = time, group = ID))+
+  geom_point(size = 3)+
+  geom_line(color='red', aes(y=pred_int, x=time))+
+  facet_wrap( ~ ID, ncol = 5)
+
+# random slope and intercept model
+ggplot(data_long, aes(y = pain_rating, x = time, group = ID))+
+  geom_point(size = 3)+
+  geom_line(color='red', aes(y=pred_slope, x=time))+
+  facet_wrap( ~ ID, ncol = 5)
+
+# compare models with cAIC
+# The second model is better
+cAIC(mod_rep_int)$caic
+cAIC(mod_rep_slope)$caic
+
+# compare models with anova
+# Significantly different
+anova(mod_rep_int, mod_rep_slope)
+anova(mod_rep_slope, mod_rep_int)
+
+# Benefit for the random slope model,
+# use the one with the random slope in it
+
+### adding a quadratic term of time to the intercept model
+# to account for curved relationship between time and pain rating
+mod_rep_slope_quad = lmer(pain_rating ~ time + I(time^2) + age + sex + weight + STAI_trait + mindfulness + cortisol_serum + (time|ID), data = data_long)
+mod_rep_slope_quad
+confint(mod_rep_slope_quad)
+summary(mod_rep_slope_quad)
+
+r2beta(mod_rep_slope_quad, method = "nsj", data = data)
+r.squaredGLMM(mod_rep_slope_quad)
+stdCoef.merMod(mod_rep_slope_quad) #standardized beta
+
+## plot the results
+# save prediction of the model to new variable
+data_long$pred_slope_quad = predict(mod_rep_slope_quad)
+
+# random intercept model
+ggplot(data_long, aes(y = pain_rating, x = time, group = ID))+
+  geom_point(size = 3)+
+  geom_line(color='red', aes(y=pred_slope_quad, x=time))+
+  facet_wrap( ~ ID, ncol = 5)
+# this looks like a better fit than the others
+
+# compare models with cAIC
+cAIC(mod_rep_slope)$caic
+cAIC(mod_rep_slope_quad)$caic #This model looks better
+
+# compare models with anova, siginifically better to have the second order term
+anova(mod_rep_slope, mod_rep_slope_quad) 
+
+#standardizing tha data
+library(standardize)
+data_long_standard <- standardize(mod_rep_slope_quad,data_long)
+is.standardized(data_long_standard)
+
+summary(data_long_standard)
+
+###########################################################
+#              Data and model diagnostics                 #
+###########################################################
+influence(mod_rep_slope_quad, group = "ID")$alt.fixed #this shows that excluding one class. if eg one cluster has a large effect, report in your assignment that one cluster is very influetial.  
+influence(mod_rep_slope_quad, obs = T)$alt.fixed # this can take a minute or so
+
+# normality assumption
+# QQ plot
+library(lattice)
+qqmath(mod_rep_slope_quad, id=0.05) # this might require the lattice package, but you can get the same graph wit the qqnorm() function
+
+#linearity of each predictor and the standardized residual
+# visualize the linearity of connection of each predictor
+predictors=c("pain_rating")
+for(i in 1:length(predictors)){
+  predictor_to_test = data_long[,predictors[i]]
+  print(
+    ggplot(data.frame(x = predictor_to_test,pearson=residuals(mod_rep_slope_quad,type="pearson")),
+           aes(x=x,y=pearson)) +
+      geom_point() +
+      geom_smooth(method = 'loess') +
+      theme_bw()
+  )
+}
+
+plot(mod_rep_slope_quad)
+
+# Levens model for testing the for heteroscedasticity, from here: http://ademos.people.uic.edu/Chapter18.html
+# look at the overall model F and p, if it is significant, there may be heteroscedasticity
+summary(lm(residuals(mod_rep_slope_quad)^2 ~ data_long[,"ID"]))
+
+
+# multicollinearity
+# there are some functions out there, but for now just look at the correlation matrix
+# some example of a function designed to extract vif from lmer: https://raw.githubusercontent.com/aufrank/R-hacks/master/mer-utils.R
+pairs.panels(data_long, col = "red", lm = T)
+
+#VIF
+
+#Function for VIF
+vif.lme <- function (fit) {
+  ## adapted from rms::vif
+  v <- vcov(fit)
+  nam <- names(fixef(fit))
+  ## exclude intercepts
+  ns <- sum(1 * (nam == "Intercept" | nam == "(Intercept)"))
+  if (ns > 0) {
+    v <- v[-(1:ns), -(1:ns), drop = FALSE]
+    nam <- nam[-(1:ns)] }
+  d <- diag(v)^0.5
+  v <- diag(solve(v/(d %o% d)))
+  names(v) <- nam
+  v }
+vif.lme(mod_rep_slope_quad)
